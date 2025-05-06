@@ -168,6 +168,7 @@ int mapPositionToPWM(int position) {
 
 // Function declarations
 void processHIDReport();
+void setupHighFrequencyPWM();
 void updateEffect();
 void setMotorPWM(int speed);
 bool isPositionSafe(int position);
@@ -188,6 +189,9 @@ void setup() {
     pinMode(PIN_MOTOR_PWM2, OUTPUT);
     pinMode(PIN_TRIGGER_POS, INPUT);
     pinMode(PIN_MOTOR_POS, INPUT);
+    
+    // Configure PWM frequency to above 30kHz to eliminate motor buzzing noise
+    setupHighFrequencyPWM();
 
     // Initialize HID with RawHID
     RawHID.begin(rawhidData, sizeof(rawhidData));
@@ -240,6 +244,44 @@ void loop() {
         // Serial.print(F("Trigger Pos: ")); Serial.println(mapPositionToPWM(triggerPos));
         lastPrintedPos = motorPos;
     }
+}
+
+/**
+ * Sets up high frequency PWM for motor control to eliminate audible buzzing
+ * Configures Timer3 and Timer4 for pins 5 and 6 to operate at 62.5kHz
+ * This is well above the human hearing range (>30kHz)
+ */
+void setupHighFrequencyPWM() {
+    // On ATmega32u4 Leonardo:
+    // Pin 5 is connected to Timer3 (OC3A)
+    // Pin 6 is connected to Timer4 (OC4D)
+    
+    // Configure Timer3 for pin 5 (OC3A)
+    TCCR3A = 0;
+    TCCR3B = 0;
+    // Set Fast PWM mode (mode 5: WGM3[3:0] = 0101)
+    TCCR3A |= (1 << WGM30);
+    TCCR3B |= (1 << WGM32);
+    // Set non-inverting mode
+    TCCR3A |= (1 << COM3A1);
+    // Set prescaler to 1 (no prescaling) for highest frequency
+    // 16MHz / 1 / 256 = 62.5kHz
+    TCCR3B |= (1 << CS30);
+    
+    // Configure Timer4 for pin 6 (OC4D)
+    TCCR4A = 0;
+    TCCR4B = 0;
+    TCCR4C = 0;
+    TCCR4D = 0;
+    // Set Fast PWM mode
+    TCCR4C |= (1 << PWM4D);
+    TCCR4D |= (1 << WGM40);
+    // Set prescaler to 1 (no prescaling) for highest frequency
+    // 16MHz / 1 / 256 = 62.5kHz
+    TCCR4B |= (1 << CS40);
+    // Set TOP value to 255 for 8-bit resolution
+    TC4H = 0;
+    OCR4C = 255;
 }
 
 void setMotorPWM(int pwm)
