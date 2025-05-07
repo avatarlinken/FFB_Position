@@ -12,20 +12,13 @@ const int PIN_TRIGGER_POS = A1; // Trigger position analog input
 const int PIN_MOTOR_POS = A0;   // Motor position feedback analog input
 
 // Constants
-const int WINDOW_SIZE = 8;      // Size of moving average window
+const int WINDOW_SIZE = 5;      // Size of moving average window
 const uint32_t SERIAL_BAUD = 115200;
-const int SAMPLES_PER_READ = 8; // Number of samples to read for each position reading
-const int SAMPLE_DELAY = 1;     // Delay between samples in microseconds
 const unsigned long USB_DEBUG_INTERVAL = 5000; // Interval for USB debug messages (ms)
 
 // PWM related constants
 const int MIN_EFFECTIVE_PWM = 30;  // Minimum effective PWM value
 const int MAX_PWM = 255;           // Maximum PWM value
-
-// PWM smoothing related variables
-const int PWM_STEP = 5;        // Maximum PWM change step size
-int currentPWM1 = 0;           // Current PWM1 value
-int currentPWM2 = 0;           // Current PWM2 value
 
 // Position limits and protection
 const int TRIGGER_MAX = 490;    // Maximum trigger position (released)
@@ -240,8 +233,8 @@ void loop() {
     // Print position information (when position change exceeds threshold)
     static int lastPrintedPos = 0;
     if (abs(motorPos - lastPrintedPos) > POSITION_PRINT_THRESHOLD) {
-        // Serial.print(F("Motor Pos: ")); Serial.println(motorPos);
-        // Serial.print(F("Trigger Pos: ")); Serial.println(mapPositionToPWM(triggerPos));
+        Serial.print(F("Motor Pos: ")); Serial.println(motorPos);
+        Serial.print(F("Trigger Pos: ")); Serial.println(mapPositionToPWM(triggerPos));
         lastPrintedPos = motorPos;
     }
 }
@@ -286,16 +279,14 @@ void setupHighFrequencyPWM() {
 
 void setMotorPWM(int pwm)
 {
-  if(pwm>0)
-  {
-    analogWrite(PIN_MOTOR_PWM1, 255);
-    analogWrite(PIN_MOTOR_PWM2, 255-pwm);
-  }
-  else
-  {
-    analogWrite(PIN_MOTOR_PWM1, 255);
-    analogWrite(PIN_MOTOR_PWM2, 255+pwm);
-  }
+    // 应用计算后的PWM值
+    if(pwm > 0) {
+        analogWrite(PIN_MOTOR_PWM1, 255);
+        analogWrite(PIN_MOTOR_PWM2, 255-pwm);
+    } else {
+        analogWrite(PIN_MOTOR_PWM1, 255);
+        analogWrite(PIN_MOTOR_PWM2, 255+pwm);
+    }
 }
 
 void processHIDReport() {
@@ -532,9 +523,7 @@ void setParameter(uint8_t paramId, uint16_t value) {
 }
 
 void updateEffect() {
-    unsigned long currentTime = millis();
-    unsigned long elapsedTime = currentTime - currentEffect.startTime;
-    int force = 0;
+    int force = 0;  
     
     // 根据当前效果类型计算基础力反馈值
     switch (currentEffect.type) {
@@ -551,9 +540,7 @@ void updateEffect() {
             break;
             
         case EFFECT_RECOIL:
-            {
-                impactEffect(currentEffect.vibrationStrength, currentEffect.vibrationIntensity, currentEffect.vibrationFrequency);
-            }
+            impactEffect(currentEffect.vibrationStrength, currentEffect.vibrationIntensity, currentEffect.vibrationFrequency);
             break;
             
         case EFFECT_SNIPER:
@@ -597,12 +584,6 @@ void updateEffect() {
                         triggerReleased = false;
                     }
                 }
-                
-                // // 确保力反馈在有效范围内
-                // force = constrain(force, -255, 255);
-                // if (abs(force) < MIN_EFFECTIVE_PWM && force != 0) {
-                //     force = (force > 0) ? MIN_EFFECTIVE_PWM : -MIN_EFFECTIVE_PWM;
-                // }
             }
             break;
 
@@ -636,7 +617,8 @@ void updateEffect() {
             // 触发器位置小于起始位置，不应用力反馈
             force = 0;
         }
-        
+        // Serial.print("Force:");
+        // Serial.println(force);
         setMotorPWM(force);
     }
 }
