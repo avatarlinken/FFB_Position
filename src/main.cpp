@@ -611,11 +611,21 @@ void updateEffect() {
             }
         }
 
-        // 应用起始位置限制 - 当触发器位置小于起始位置时，不应用力反馈
-        // 这样可以创建一个"无力反馈区域"，大小由PARAM_DAMPING_START_POS控制
-        if (mapPositionToPWM(triggerPos) <= (int)currentEffect.startPosition) {
-            // 触发器位置小于起始位置，不应用力反馈
+        // 应用起始位置限制 - 实现渐进式力反馈，避免突然的力反馈变化
+        // 创建一个过渡区域，在该区域内力反馈逐渐增加
+        int mappedTriggerPos = mapPositionToPWM(triggerPos);
+        int transitionZone = 10; // 过渡区域大小，可以根据实际体验调整
+        
+        if (mappedTriggerPos < (int)currentEffect.startPosition - transitionZone) {
+            // 完全在起始位置之前，不应用力反馈
             force = 0;
+        } else if (mappedTriggerPos < (int)currentEffect.startPosition) {
+            // 在过渡区域内，线性增加力反馈
+            float ratio = (float)(mappedTriggerPos - (currentEffect.startPosition - transitionZone)) / transitionZone;
+            // 确保比例在0到1之间
+            ratio = constrain(ratio, 0.0, 1.0);
+            // 应用平滑过渡
+            force = (int)(force * ratio);
         }
         // Serial.print("Force:");
         // Serial.println(force);
