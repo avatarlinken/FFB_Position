@@ -17,7 +17,7 @@ const uint32_t SERIAL_BAUD = 115200;
 const unsigned long USB_DEBUG_INTERVAL = 5000; // Interval for USB debug messages (ms)
 
 // PWM related constants
-const int MIN_EFFECTIVE_PWM = 30;  // Minimum effective PWM value
+const int MIN_EFFECTIVE_PWM = 50;  // Minimum effective PWM value
 const int MAX_PWM = 255;           // Maximum PWM value
 
 // Position limits and protection
@@ -534,9 +534,65 @@ void updateEffect() {
             break;
             
         case EFFECT_RACING:
-            // 确保magnitude大于最小有效值
-            force = (currentEffect.dampingStrength < MIN_EFFECTIVE_PWM && currentEffect.dampingStrength > 0) ? 
-                    MIN_EFFECTIVE_PWM : currentEffect.dampingStrength;
+            {
+                // 读取当前位置
+                int currentPos = getFilteredPosition(PIN_TRIGGER_POS, triggerWindow);
+                int mappedPos = mapPositionToPWM(currentPos);
+                static int prevPos = mappedPos;
+                static bool triggerReleased = false;
+                static unsigned long releaseStartTime = 0;
+                static bool isPressed = false;
+                
+                // 检测按键是否被按下（位置超过起始位置）
+                if (mappedPos > currentEffect.startPosition + 10) {
+                    isPressed = true;
+                }
+                
+                // 检测扳机释放 - 改进的检测逻辑
+                if (isPressed && mappedPos <= currentEffect.startPosition + 10) {
+                    // 从按下状态变为接近起始位置，认为是释放
+                    triggerReleased = true;
+                    releaseStartTime = millis();
+                    isPressed = false;
+                }
+                
+                if (triggerReleased) {
+                    // 计算回弹力度 - 使用平滑的回弹曲线
+                    unsigned long elapsedTime = millis() - releaseStartTime;
+                    // 回弹时间窗口 (ms)
+                    const unsigned long REBOUND_WINDOW = 300;
+                    
+                    if (elapsedTime < REBOUND_WINDOW) {
+                        // 使用余弦函数创建平滑的回弹曲线
+                        float progress = (float)elapsedTime / REBOUND_WINDOW;
+                        float reboundFactor = cos(progress * PI) * 0.5 + 0.5; // 从1平滑降到0
+                        
+                        // 基础回弹力 - 确保即使在低阻尼时也有足够的回弹力
+                        int baseReboundForce = -100; // 负值表示反向力
+                        
+                        // 应用回弹因子，使回弹力随时间平滑减小
+                        force = (int)(baseReboundForce * reboundFactor);
+                    } else {
+                        // 回弹时间结束后，应用较小的恒定力以确保完全回到初始位置
+                        force = -30;
+                    }
+                    
+                    // 如果回到起始位置附近，重置释放标志
+                    if (mappedPos <= currentEffect.startPosition + 5) {
+                        triggerReleased = false;
+                        // 应用原始阻尼力
+                        force = (currentEffect.dampingStrength < MIN_EFFECTIVE_PWM && currentEffect.dampingStrength > 0) ? 
+                                MIN_EFFECTIVE_PWM : currentEffect.dampingStrength;
+                    }
+                } else {
+                    // 未释放状态下使用正常阻尼力
+                    force = (currentEffect.dampingStrength < MIN_EFFECTIVE_PWM && currentEffect.dampingStrength > 0) ? 
+                            MIN_EFFECTIVE_PWM : currentEffect.dampingStrength;
+                }
+                
+                // 更新前一位置
+                prevPos = mappedPos;
+            }
             break;
             
         case EFFECT_RECOIL:
